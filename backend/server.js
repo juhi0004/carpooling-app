@@ -35,10 +35,19 @@ connectDB();
 // Import routes
 const authRoutes = require('./routes/auth');
 const tripRoutes = require('./routes/trips');
+// Import payment models
+const Payment = require('./models/Payment');
+const Wallet = require('./models/Wallet');
+
+// Import payment routes
+const paymentRoutes = require('./routes/payments');
 
 // Use routes
 app.use('/api/auth', authRoutes);
 app.use('/api/trips', tripRoutes);
+// Use payment routes
+app.use('/api/payments', paymentRoutes);
+
 
 // Health Check Routes
 app.get("/", (req, res) => {
@@ -106,5 +115,10 @@ process.on("SIGTERM", () => {
     });
   });
 });
+
+
+
+
+
 
 module.exports = app;
