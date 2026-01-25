@@ -1,124 +1,104 @@
-const express = require("express");
-const cors = require("cors");
-const dotenv = require("dotenv");
-const mongoose = require("mongoose");
-const connectDB = require("./config/db");
-const validateEnvironment = require("./config/environment");
-const errorHandler = require("./middleware/errorHandler");
+const express = require('express');
+const dotenv = require('dotenv');
+const mongoose = require('mongoose');
 
 // Load environment variables
 dotenv.config();
 
-// Validate environment
-validateEnvironment();
-
-// Initialize app
 const app = express();
 
 // Middleware
-app.use(cors({
-  origin: (process.env.CORS_ORIGIN || "http://localhost:3000").split(","),
-  credentials: true,
-}));
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// Request logging
-app.use((req, res, next) => {
-  console.log(`📨 ${req.method} ${req.path}`);
-  next();
-});
+// MongoDB Connection
+const mongoUri = process.env.MONGODB_URI;
 
-// Connect to MongoDB
-connectDB();
+mongoose.connect(mongoUri)
+  .then(() => console.log('✅ MongoDB connected'))
+  .catch((err) => {
+    console.error('❌ MongoDB connection error:', err.message);
+    process.exit(1);
+  });
 
-// Import routes
-const authRoutes = require('./routes/auth');
-const tripRoutes = require('./routes/trips');
-// Import payment models
-const Payment = require('./models/Payment');
-const Wallet = require('./models/Wallet');
+// Routes
+try {
+  // Working routes
+  const authRoutes = require('./routes/auth');
+  const tripRoutes = require('./routes/trips');
+  const paymentRoutes = require('./routes/payments');
+  const notificationRoutes = require('./routes/notifications');
+  
+  app.use('/api/users', authRoutes);
+  console.log('✅ Auth routes loaded');
+  
+  app.use('/api/trips', tripRoutes);
+  console.log('✅ Trip routes loaded');
+  
+  app.use('/api/payments', paymentRoutes);
+  console.log('✅ Payment routes loaded');
+  
+  app.use('/api/notifications', notificationRoutes);
+  console.log('✅ Notification routes loaded');
+  
+  //TODO: Uncomment when ready to implement
+  const userRoutes = require('./routes/users');
+  app.use('/api/accounts', userRoutes);
+  console.log('✅ User routes loaded');
+  
+  const walletRoutes = require('./routes/wallets');
+  app.use('/api/wallets', walletRoutes);
+  console.log('✅ Wallet routes loaded');
+  
+} catch (error) {
+  console.error('❌ Route loading error:', error.message);
+  process.exit(1);
+}
 
-// Import payment routes
-const paymentRoutes = require('./routes/payments');
-
-// Use routes
-app.use('/api/auth', authRoutes);
-app.use('/api/trips', tripRoutes);
-// Use payment routes
-app.use('/api/payments', paymentRoutes);
-
-
-// Health Check Routes
-app.get("/", (req, res) => {
+// Health check endpoint
+app.get('/', (req, res) => {
   res.json({
-    message: "🎉 Carpooling API is running!",
-    version: "1.0.0",
-    timestamp: new Date(),
-    environment: process.env.NODE_ENV,
+    message: 'Carpooling API',
+    status: 'running',
+    version: '1.0.0',
+    database: 'connected'
   });
 });
 
-app.get("/api/health", (req, res) => {
-  const mongoStatus = mongoose.connection.readyState === 1 ? "✅ Connected" : "❌ Disconnected";
-
-  res.json({
-    success: true,
-    status: "✅ Server is healthy",
-    timestamp: new Date(),
-    services: {
-      api: "✅ Running",
-      mongodb: mongoStatus,
-      blockchain: "✅ Ready",
-    },
-    config: {
-      environment: process.env.NODE_ENV,
-      blockchain: process.env.NETWORK_NAME,
-    },
-  });
-});
-
-// 404 Handler
+// 404 handler
 app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: "Route not found",
-    path: req.path,
-  });
+  res.status(404).json({ error: 'Route not found' });
 });
 
-// Error Handler (Must be last)
-app.use(errorHandler);
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('⚠️  Error:', err.message);
+  res.status(500).json({ error: 'Internal server error' });
+});
 
-// Start Server
+// Start server
 const PORT = process.env.PORT || 5000;
+
 const server = app.listen(PORT, () => {
-  console.log("\n" + "=".repeat(60));
-  console.log("✅ SERVER STARTED SUCCESSFULLY");
-  console.log("=".repeat(60));
-  console.log(`🌐 API: http://localhost:${PORT}`);
-  console.log(`📝 Environment: ${process.env.NODE_ENV}`);
-  console.log(`💾 Database: ${process.env.MONGODB_URI}`);
-  console.log(`🔗 Blockchain: ${process.env.NETWORK_NAME}`);
-  console.log(`🔐 Auth: JWT enabled`);
-  console.log("=".repeat(60) + "\n");
+  console.log(`\n╔════════════════════════════════════╗`);
+  console.log(`║  🚀 Carpooling API Server Started  ║`);
+  console.log(`║  Port: ${PORT}                          ║`);
+  console.log(`║  Status: Ready                      ║`);
+  console.log(`╚════════════════════════════════════╝\n`);
 });
 
-// Graceful Shutdown
-process.on("SIGTERM", () => {
-  console.log("\n📌 SIGTERM signal received: closing HTTP server");
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('📡 SIGTERM received, shutting down gracefully...');
   server.close(() => {
-    console.log("✅ HTTP server closed");
-    mongoose.connection.close(false, () => {
-      console.log("✅ MongoDB connection closed");
-      process.exit(0);
-    });
+    console.log('✅ Server closed');
+    process.exit(0);
   });
 });
 
-
-
-
-
+// Unhandled rejections
+process.on('unhandledRejection', (err) => {
+  console.error('⚠️  Unhandled Rejection:', err);
+  process.exit(1);
+});
 
 module.exports = app;

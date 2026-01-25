@@ -96,6 +96,36 @@ class NotificationController {
       });
     }
   }
+
+  // Register device token
+  async registerDeviceToken(req, res) {
+    try {
+      const { token, platform } = req.body;
+
+      if (!token || !platform) {
+        return res.status(400).json({
+          success: false,
+          message: 'Token and platform required',
+        });
+      }
+
+      const result = await notificationService.registerDeviceToken(
+        req.user.id,
+        token,
+        platform
+      );
+
+      res.status(200).json({
+        success: true,
+        ...result,
+      });
+    } catch (error) {
+      res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
 }
 
 module.exports = new NotificationController();

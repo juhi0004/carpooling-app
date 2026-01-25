@@ -1,9 +1,20 @@
 const nodemailer = require('nodemailer');
-const twilio = require('twilio');
+const admin = require('firebase-admin');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
 
-// Initialize services
+// Initialize Firebase Admin
+const serviceAccount = {
+  projectId: process.env.FIREBASE_PROJECT_ID,
+  privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+  clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+};
+
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
+// Initialize Email service
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
   port: process.env.EMAIL_PORT,
@@ -13,11 +24,6 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASSWORD,
   },
 });
-
-const twilioClient = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
 
 class NotificationService {
   // Create and send notification
@@ -50,10 +56,10 @@ class NotificationService {
           if (channel === 'email') {
             await this.sendEmail(recipient.email, title, message, data);
             notification.channels.find((c) => c.type === 'email').status = 'sent';
-          } else if (channel === 'sms') {
-            if (recipient.phone) {
-              await this.sendSMS(recipient.phone, message);
-              notification.channels.find((c) => c.type === 'sms').status = 'sent';
+          } else if (channel === 'push') {
+            if (recipient.deviceTokens && recipient.deviceTokens.length > 0) {
+              await this.sendPushNotification(recipient.deviceTokens, title, message, data);
+              notification.channels.find((c) => c.type === 'push').status = 'sent';
             }
           } else if (channel === 'in_app') {
             // In-app is already stored in DB
@@ -95,16 +101,44 @@ class NotificationService {
     }
   }
 
-  // Send SMS
-  async sendSMS(phoneNumber, message) {
+  // Send Push Notification via Firebase
+  async sendPushNotification(deviceTokens, title, message, data = {}) {
     try {
-      await twilioClient.messages.create({
-        body: message,
-        from: process.env.TWILIO_PHONE_NUMBER,
-        to: phoneNumber,
+      const tokens = deviceTokens.map((dt) => dt.token);
+
+      const payload = {
+        notification: {
+          title: title,
+          body: message,
+        },
+        data: {
+          ...data,
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      // Send to all device tokens
+      const response = await admin.messaging().sendMulticast({
+        tokens: tokens,
+        ...payload,
       });
+
+      // Log results
+      console.log(`Push sent to ${response.successCount} devices`);
+
+      if (response.failureCount > 0) {
+        const failedTokens = [];
+        response.responses.forEach((resp, idx) => {
+          if (!resp.success) {
+            failedTokens.push(tokens[idx]);
+          }
+        });
+        console.warn(`Failed tokens:`, failedTokens);
+      }
+
+      return response;
     } catch (error) {
-      throw new Error(`SMS error: ${error.message}`);
+      throw new Error(`Push notification error: ${error.message}`);
     }
   }
 
@@ -160,6 +194,37 @@ class NotificationService {
         </body>
       </html>
     `;
+  }
+
+  // Register device token
+  async registerDeviceToken(userId, token, platform) {
+    try {
+      const user = await User.findById(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Check if token already exists
+      const existingToken = user.deviceTokens.find((dt) => dt.token === token);
+      if (!existingToken) {
+        user.deviceTokens.push({
+          token,
+          platform,
+          registeredAt: new Date(),
+        });
+
+        // Keep only last 5 devices
+        if (user.deviceTokens.length > 5) {
+          user.deviceTokens = user.deviceTokens.slice(-5);
+        }
+
+        await user.save();
+      }
+
+      return { success: true, message: 'Device token registered' };
+    } catch (error) {
+      throw new Error(`Error registering token: ${error.message}`);
+    }
   }
 
   // Get notifications for user
@@ -296,7 +361,7 @@ class NotificationService {
       'rider_joined',
       'New Rider Joined',
       `${riderName} has joined your trip. ${trip.totalSeats - trip.availableSeats} seats booked.`,
-      ['in_app', 'sms', 'email'],
+      ['in_app', 'push', 'email'],
       {
         riderName,
         tripDetails: {
@@ -328,7 +393,7 @@ class NotificationService {
       'trip_started',
       'Trip Started',
       'Your trip has started. Safe travels!',
-      ['in_app', 'sms']
+      ['in_app', 'push']
     );
 
     // Notify all riders
@@ -338,7 +403,7 @@ class NotificationService {
         'trip_started',
         'Your Ride Started',
         'Your driver has started the journey',
-        ['in_app', 'sms']
+        ['in_app', 'push']
       );
     }
   }

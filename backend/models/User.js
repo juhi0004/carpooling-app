@@ -1,14 +1,17 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
 
+// User Schema
 const userSchema = new mongoose.Schema(
   {
+    // Basic Information
     name: {
       type: String,
       required: [true, 'Please provide a name'],
       trim: true,
-      maxlength: [100, 'Name cannot be more than 100 characters']
+      minlength: [2, 'Name must be at least 2 characters'],
+      maxlength: [50, 'Name cannot exceed 50 characters']
     },
+    
     email: {
       type: String,
       required: [true, 'Please provide an email'],
@@ -19,82 +22,115 @@ const userSchema = new mongoose.Schema(
         'Please provide a valid email'
       ]
     },
+    
     phone: {
       type: String,
       required: [true, 'Please provide a phone number'],
-      match: [/^[0-9]{10}$/, 'Phone number must be 10 digits']
+      match: [/^[0-9]{10}$/, 'Please provide a valid 10-digit phone number']
     },
+    
     password: {
       type: String,
       required: [true, 'Please provide a password'],
       minlength: [6, 'Password must be at least 6 characters'],
       select: false // Don't return password by default
     },
-    role: {
-      type: String,
-      enum: ['driver', 'rider', 'admin'],
-      default: 'rider'
-    },
+    
+    // Profile Information
     profilePicture: {
       type: String,
       default: null
     },
+    
+    bio: {
+      type: String,
+      default: '',
+      maxlength: [500, 'Bio cannot exceed 500 characters']
+    },
+    
+    // Rating and Reviews
+    rating: {
+      type: Number,
+      default: 0,
+      min: [0, 'Rating cannot be less than 0'],
+      max: [5, 'Rating cannot exceed 5']
+    },
+    
+    // Ride Statistics
+    ridesCompleted: {
+      type: Number,
+      default: 0,
+      min: [0, 'Rides completed cannot be negative']
+    },
+    
+    ridesAsDriver: {
+      type: Number,
+      default: 0,
+      min: [0, 'Rides as driver cannot be negative']
+    },
+    
+    // Account Status
     isActive: {
       type: Boolean,
       default: true
     },
-    walletAddress: {
-      type: String,
-      default: null
-    },
-    rating: {
-      type: Number,
-      default: 5,
-      min: 1,
-      max: 5
-    },
-    totalTrips: {
-      type: Number,
-      default: 0
-    },
-    isVerified: {
-      type: Boolean,
-      default: false
-    },
-    createdAt: {
+    
+    joinDate: {
       type: Date,
       default: Date.now
     },
-    updatedAt: {
-      type: Date,
-      default: Date.now
+    
+    // User Settings
+    settings: {
+      notificationsEnabled: {
+        type: Boolean,
+        default: true
+      },
+      privacyLevel: {
+        type: String,
+        enum: ['public', 'private', 'friends-only'],
+        default: 'public'
+      },
+      preferredLanguage: {
+        type: String,
+        default: 'en'
+      },
+      theme: {
+        type: String,
+        enum: ['light', 'dark'],
+        default: 'light'
+      }
+    },
+    
+    // Social Links
+    socialLinks: {
+      facebook: String,
+      twitter: String,
+      instagram: String
     }
   },
   {
-    timestamps: true
+    timestamps: true // Adds createdAt and updatedAt automatically
   }
 );
 
-// Hash password before saving
-userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) {
-    next();
-  }
+// Index for faster queries
+userSchema.index({ email: 1 });
+userSchema.index({ phone: 1 });
 
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
+// Virtual for user's full display
+userSchema.virtual('displayName').get(function() {
+  return this.name;
 });
 
-// Method to compare passwords
-userSchema.methods.matchPassword = async function (enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password);
-};
-
-// Method to get user data without password
-userSchema.methods.toJSON = function () {
+// Method to return user without sensitive data
+userSchema.methods.toJSON = function() {
   const user = this.toObject();
   delete user.password;
   return user;
 };
 
-module.exports = mongoose.model('User', userSchema);
+// Create Model
+const User = mongoose.model('User', userSchema);
+
+module.exports = User;

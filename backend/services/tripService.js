@@ -11,6 +11,15 @@ const createTrip = async (tripData, driverId) => {
       availableSeats: tripData.totalSeats
     });
 
+    // ✅ ADD THIS (wrapped in try-catch so it doesn't break trip creation)
+    try {
+      const notificationService = require('./notificationService');
+      const driver = await User.findById(driverId);
+      await notificationService.onTripCreated(trip, driver.name || driver.email);
+    } catch (notifErr) {
+      console.warn('⚠️  Notification failed (non-critical):', notifErr.message);
+    }
+
     return {
       success: true,
       message: 'Trip created successfully',
@@ -20,6 +29,8 @@ const createTrip = async (tripData, driverId) => {
     throw error;
   }
 };
+
+
 
 // Get all trips with filters
 const getAllTrips = async (filters = {}, page = 1, limit = 10) => {
@@ -155,6 +166,13 @@ const joinTrip = async (tripId, riderId, seatsToBook = 1) => {
     // Recalculate available seats
     trip.calculateAvailableSeats();
     await trip.save();
+    try {
+      const notificationService = require('./notificationService');
+      const rider = await User.findById(riderId);
+      await notificationService.onRiderJoined(trip, rider.name || rider.email, trip.driver);
+    } catch (notifErr) {
+      console.warn('⚠️  Notification failed (non-critical):', notifErr.message);
+    }
 
     return {
       success: true,

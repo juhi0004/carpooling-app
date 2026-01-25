@@ -13,6 +13,9 @@ router.get('/', notificationController.getNotifications);
 // Get unread count
 router.get('/unread/count', notificationController.getUnreadCount);
 
+// Register device token (for push notifications)
+router.post('/device-token', notificationController.registerDeviceToken);
+
 // Mark as read
 router.post('/:id/read', notificationController.markAsRead);
 
